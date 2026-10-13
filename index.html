@@ -30,10 +30,10 @@
     const overlay = document.getElementById('loading');
     const diagnostics = document.getElementById('diagnostics');
     const config = {
-      dataUrl: 'Build/c51616128ef1a445ffc40420a8aeacc9.data.unityweb',
-      frameworkUrl: 'Build/d48f94b4b517200da1a1a27bc0a56853.framework.js.unityweb',
-      codeUrl: 'Build/eadef3f4ab6a0e9d7a7dd219dac3d6c9.wasm.unityweb',
-      symbolsUrl: 'Build/2ab292673437667e5a2b2869ee30f264.symbols.json.unityweb',
+      dataUrl: 'Build/cfb3b064c92a5eeccb6cd3daad1b69cd.data.unityweb',
+      frameworkUrl: 'Build/c849c9b512aa164859384ca1c430f04d.framework.js.unityweb',
+      codeUrl: 'Build/d934638f15e3a148038aa97451014fb0.wasm.unityweb',
+      symbolsUrl: 'Build/39e625ccb30fef07fbb91d3f6cbfffab.symbols.json.unityweb',
       streamingAssetsUrl: 'StreamingAssets',
       companyName: "DefaultCompany",
       productName: "FPS",
@@ -120,7 +120,7 @@
       else unlockPointer();
     };
     const script = document.createElement('script');
-    script.src = 'Build/847438a7db4b7a0942221ff146127980.loader.js';
+    script.src = 'Build/06568f090d6e2f2560e6806fea0b25e6.loader.js';
     script.onerror = () => showError('Не удалось загрузить игру. Проверьте соединение и обновите страницу.');
     script.onload = () => createUnityInstance(canvas, config, progress => document.getElementById('progress').value = progress).then(instance => {
       window.unityInstance = instance;
