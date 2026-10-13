@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <title>FPS</title>
+  <link rel="icon" href="data:,">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #111820; color: #edf1f5; font: 16px system-ui, sans-serif; }
+    #game { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
+    #loading, #rotate { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 18px; padding: 24px; text-align: center; background: #111820; }
+    #loading progress { width: min(360px, 80vw); accent-color: #57c6dd; }
+    #start { padding: 16px 48px; background: #57c6dd; color: #111820; border: 0; border-radius: 8px; font: bold 18px system-ui, sans-serif; }
+    #status { max-width: 520px; white-space: pre-wrap; }
+    #rotate { display: none; z-index: 5; }
+    #diagnostics { display: none; position: fixed; top: env(safe-area-inset-top, 0px); left: env(safe-area-inset-left, 0px); margin: 8px; padding: 8px; background: #111c; font: 12px monospace; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <canvas id="game" tabindex="0" aria-label="Игра"></canvas>
+  <div id="loading"><strong>FPS</strong><progress id="progress" max="1" value="0"></progress><div id="status">Загрузка…</div><button id="start" hidden>Играть</button></div>
+  <div id="rotate">Поверните телефон горизонтально</div>
+  <pre id="diagnostics"></pre>
+  <script>
+    const query = new URLSearchParams(location.search);
+    const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+    const canvas = document.getElementById('game');
+    const status = document.getElementById('status');
+    const overlay = document.getElementById('loading');
+    const diagnostics = document.getElementById('diagnostics');
+    const config = {
+      dataUrl: 'Build/c51616128ef1a445ffc40420a8aeacc9.data.unityweb',
+      frameworkUrl: 'Build/d48f94b4b517200da1a1a27bc0a56853.framework.js.unityweb',
+      codeUrl: 'Build/eadef3f4ab6a0e9d7a7dd219dac3d6c9.wasm.unityweb',
+      symbolsUrl: 'Build/2ab292673437667e5a2b2869ee30f264.symbols.json.unityweb',
+      streamingAssetsUrl: 'StreamingAssets',
+      companyName: "DefaultCompany",
+      productName: "FPS",
+      productVersion: "1.10.0",
+      matchWebGLToCanvasSize: false,
+      showBanner: (message, type) => { if (type === 'error') showError(message); else console.warn(message); }
+    };
+    function showError(message) {
+      overlay.hidden = false;
+      overlay.style.display = 'flex';
+      status.textContent = String(message);
+      document.getElementById('progress').hidden = true;
+      document.getElementById('start').hidden = true;
+    }
+    let selectedResolution = null;
+    function resize() {
+      const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
+      const pixelRatio = Math.min(devicePixelRatio || 1, mobile ? 1.5 : 2);
+      // User choices control the rendering buffer while the canvas keeps the
+      // viewport's aspect ratio. Automatic preserves the existing DPR/size cap.
+      const scale = selectedResolution
+        ? Math.min(selectedResolution.width / Math.max(w, h), selectedResolution.height / Math.min(w, h))
+        : Math.min(pixelRatio, (mobile ? 1280 : 1920) / Math.max(w, h), (mobile ? 720 : 1080) / Math.min(w, h));
+      canvas.width = Math.max(1, Math.round(w * scale));
+      canvas.height = Math.max(1, Math.round(h * scale));
+      document.getElementById('rotate').style.display = mobile && h > w ? 'flex' : 'none';
+    }
+    window.__mfpsSetResolution = (width, height) => {
+      selectedResolution = width > 0 && height > 0
+        ? { width: Math.max(width, height), height: Math.min(width, height) } : null;
+      resize();
+    };
+    resize();
+    addEventListener('resize', resize);
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+    canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+    // Unity defers cursor requests to browser input events. Escape can dispatch
+    // that queue without permission to capture the pointer; consume the rejected
+    // Promise and retry only after a real click in the game.
+    const nativePointerLock = canvas.requestPointerLock && canvas.requestPointerLock.bind(canvas);
+    const nativePointerUnlock = document.exitPointerLock && document.exitPointerLock.bind(document);
+    let pointerLockWanted = false, pointerLockPending = false, pointerLockRequesting = false;
+    let pointerLockOptions = [];
+    function unlockPointer(...args) {
+      pointerLockWanted = pointerLockPending = false;
+      if (!nativePointerUnlock) return;
+      try {
+        const result = nativePointerUnlock(...args);
+        return result && typeof result.catch === 'function' ? result.catch(() => {}) : result;
+      } catch (_) { }
+    }
+    if (nativePointerLock) {
+      canvas.requestPointerLock = (...args) => {
+        if (mobile) return;
+        pointerLockWanted = true;
+        pointerLockOptions = args;
+        if (document.pointerLockElement === canvas || pointerLockRequesting) return;
+        if (navigator.userActivation && !navigator.userActivation.isActive) {
+          pointerLockPending = true;
+          return;
+        }
+        pointerLockPending = false;
+        pointerLockRequesting = true;
+        const denied = () => { pointerLockRequesting = false; pointerLockPending = pointerLockWanted; };
+        try {
+          const result = nativePointerLock(...args);
+          if (result && typeof result.then === 'function')
+            return result.then(() => {
+              pointerLockRequesting = false;
+              if (!pointerLockWanted) unlockPointer();
+            }, denied);
+          pointerLockRequesting = false;
+        } catch (_) { denied(); }
+      };
+      if (nativePointerUnlock) document.exitPointerLock = unlockPointer;
+      canvas.addEventListener('pointerdown', event => {
+        if (event.isTrusted && pointerLockWanted && pointerLockPending)
+          canvas.requestPointerLock(...pointerLockOptions);
+      }, true);
+    }
+    window.__mfpsSetCursorLock = locked => {
+      if (mobile || !nativePointerLock) return;
+      if (locked) canvas.requestPointerLock();
+      else unlockPointer();
+    };
+    const script = document.createElement('script');
+    script.src = 'Build/847438a7db4b7a0942221ff146127980.loader.js';
+    script.onerror = () => showError('Не удалось загрузить игру. Проверьте соединение и обновите страницу.');
+    script.onload = () => createUnityInstance(canvas, config, progress => document.getElementById('progress').value = progress).then(instance => {
+      window.unityInstance = instance;
+      status.textContent = 'Готово';
+      document.getElementById('progress').hidden = true;
+      const start = document.getElementById('start');
+      start.hidden = false;
+      start.onclick = () => {
+        overlay.hidden = true; overlay.style.display = 'none'; canvas.focus();
+        const map = query.get('map');
+        if (query.get('qa') === '1' && !query.has('online') && (map === 'CubeLevel' || map === 'ExampleLevel'))
+          instance.SendMessage('MFPS Web Runtime', 'StartOfflineMap', map);
+      };
+      window.__mfpsReady = true;
+      if (query.get('qa') === '1' && !query.has('map')) start.click();
+    }).catch(error => { showError('Ошибка запуска: ' + error); console.error(error); });
+    document.body.appendChild(script);
+    // Optional QA collects the browser's displayed frames; Unity's own CPU/frame
+    // timings come from MFPSWebRuntimeDiagnostics. This is not a phone benchmark.
+    if (query.get('qa') === '1') {
+      diagnostics.style.display = 'block';
+      const samples = [];
+      let previous = 0;
+      function frame(now) {
+        if (previous && window.__mfpsReady && !document.hidden) { samples.push(now - previous); if (samples.length > 600) samples.shift(); }
+        previous = now;
+        window.__mfpsBrowserFrames = samples;
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+      setInterval(() => {
+        const mean = samples.length ? samples.reduce((a,b) => a+b, 0) / samples.length : 0;
+        const runtime = window.__mfpsRuntime;
+        const fps = runtime && runtime.meanMs > 0 ? (1000 / runtime.meanMs).toFixed(1) : '—';
+        diagnostics.textContent = `Game: ${fps} FPS | p95: ${runtime ? runtime.p95Ms.toFixed(1) : '—'} ms\n${runtime ? runtime.scene : 'Loading'} | ${runtime && runtime.localPlaying ? 'Playing' : 'Waiting'}\nCanvas: ${canvas.width}×${canvas.height} | ${runtime ? (runtime.unityAllocatedBytes / 1048576).toFixed(0) : '—'} MB`;
+      }, 1000);
+    }
+  </script>
+</body>
+</html>
